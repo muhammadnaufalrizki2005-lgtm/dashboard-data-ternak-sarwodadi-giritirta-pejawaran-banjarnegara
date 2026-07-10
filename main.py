@@ -121,16 +121,16 @@ if menu == "📖 Profil Desa":
 
     st.markdown("### 🗺️ Peta Wilayah")
     
-    # Koordinat Resmi Sesuai Data Geografis Wikipedia
-    sarwodadi_coords = [-7.24000, 109.77250]
-    giritirta_coords = [-7.23833, 109.78556]
+    # Koordinat Presisi Visual (Tepat di atas label teks pemukiman)
+    sarwodadi_coords = [-7.24734, 109.77283]
+    giritirta_coords = [-7.24434, 109.78213]
     
     center_coords = [
         (sarwodadi_coords[0] + giritirta_coords[0]) / 2,
         (sarwodadi_coords[1] + giritirta_coords[1]) / 2
     ]
     
-    m = folium.Map(location=center_coords, zoom_start=14)
+    m = folium.Map(location=center_coords, zoom_start=15)
     
     folium.Marker(
         location=sarwodadi_coords, 
@@ -170,7 +170,6 @@ elif menu == "📊 Dashboard Data Peternakan":
         with col1:
             st.metric(label="Total Populasi Ternak", value=f"{int(filtered_data['Total Ekor'].sum())} Ekor")
         with col2:
-            # Perbaikan: Menghitung berdasarkan keunikan kolom 'No' agar berjumlah 37 Orang
             st.metric(label="Total Peternak", value=f"{filtered_data['No'].nunique()} Orang")
         with col3:
             if not filtered_data.empty:
