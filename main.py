@@ -121,9 +121,9 @@ if menu == "📖 Profil Desa":
 
     st.markdown("### 🗺️ Peta Wilayah")
     
-    # Koordinat Presisi Visual (Tepat di atas label teks pemukiman)
-    sarwodadi_coords = [-7.24734, 109.77283]
-    giritirta_coords = [-7.24434, 109.78213]
+    # Koordinat presisi sesuai titik yang diberikan
+    sarwodadi_coords = [-7.244900, 109.775966]
+    giritirta_coords = [-7.242258, 109.782562]
     
     center_coords = [
         (sarwodadi_coords[0] + giritirta_coords[0]) / 2,
