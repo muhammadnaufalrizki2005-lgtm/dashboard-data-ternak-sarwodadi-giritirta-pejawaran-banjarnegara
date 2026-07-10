@@ -5,24 +5,22 @@ import folium
 from streamlit_folium import st_folium
 from streamlit_option_menu import option_menu
 
-# Konfigurasi Halaman (Minimalist & Clean)
+# Konfigurasi Halaman
 st.set_page_config(page_title="Dashboard Pendataan Ternak", layout="wide")
 
 # Fungsi Load, Clean & Parse Data
 @st.cache_data
 def load_data():
     try:
-        # Membaca format CSV baru
         df = pd.read_csv('Data Ternak Sarwodadi, Giritirta.xlsx - Sheet1.csv', header=None, skiprows=3)
     except:
         try:
-            # Cadangan jika file bernama Excel
             df = pd.read_excel('Data Ternak Sarwodadi, Giritirta.xlsx', header=None, skiprows=3)
         except:
-            st.error("File data tidak ditemukan. Pastikan nama filenya benar di GitHub.")
+            st.error("File data tidak ditemukan.")
             return pd.DataFrame()
     
-    # Memastikan hanya mengambil 17 kolom (mencegah error length mismatch)
+    # Mengambil 17 kolom saja
     df = df.iloc[:, 0:17]
     
     df.columns = [
@@ -33,46 +31,37 @@ def load_data():
         'Ketersediaan'
     ]
     
-    # Fungsi khusus untuk menangani "0-" atau "-"
     def format_wilayah(val, prefix):
-        if pd.isna(val):
-            return "-"
-        
+        if pd.isna(val): return "-"
         s = str(val).replace('.0', '').strip()
-        # Jika isinya kosong, strip, atau nan, langsung kembalikan strip (tanpa 0)
-        if s.lower() in ['nan', '-', '', 'none', '0-']:
-            return "-"
-            
-        # Jika isinya murni angka tunggal (misal '1'), tambahkan 0 di depan
-        if s.isdigit() and len(s) == 1:
-            return f"{prefix} 0{s}"
-            
+        if s.lower() in ['nan', '-', '', 'none', '0-']: return "-"
+        if s.isdigit() and len(s) == 1: return f"{prefix} 0{s}"
         return f"{prefix} {s.upper()}"
     
     records = []
     for _, row in df.iterrows():
-        # Lewati baris yang nama pemiliknya kosong
         if pd.isna(row['Nama Pemilik']):
             continue
             
         def parse_num(val):
-            try:
-                return float(val) if pd.notna(val) else 0.0
-            except:
-                return 0.0
+            try: return float(val) if pd.notna(val) else 0.0
+            except: return 0.0
                 
         for jenis in ['Kambing', 'Domba', 'Sapi']:
             jantan = parse_num(row[f'{jenis}_Jantan'])
             betina = parse_num(row[f'{jenis}_Betina'])
             anakan = parse_num(row[f'{jenis}_Anakan'])
+            total_excel = parse_num(row[f'{jenis}_Total']) # Mengambil total asli dari Excel
             
-            # Hanya masukkan data jika warga memiliki jenis hewan tersebut
-            if jantan > 0 or betina > 0 or anakan > 0:
+            if jantan > 0 or betina > 0 or anakan > 0 or total_excel > 0:
                 rt_rapi = format_wilayah(row['RT'], "RT")
                 rw_rapi = format_wilayah(row['RW'], "RW")
                 
+                # Menggunakan Total dari Excel sebagai prioritas (agar pas 213)
+                final_total = total_excel if total_excel > 0 else (jantan + betina + anakan)
+                
                 records.append({
-                    'No': row['No'],
+                    'No': int(row['No']) if pd.notna(row['No']) else 0, # Mengambil nomor asli
                     'Nama Pemilik': str(row['Nama Pemilik']).strip().title(),
                     'RT': rt_rapi,
                     'RW': rw_rapi,
@@ -80,7 +69,7 @@ def load_data():
                     'Jantan': int(jantan),
                     'Betina': int(betina),
                     'Anakan': int(anakan),
-                    'Total Ekor': int(jantan + betina + anakan),
+                    'Total Ekor': int(final_total),
                     'Ketersediaan': str(row['Ketersediaan']).strip() if pd.notna(row['Ketersediaan']) else 'Belum Konfirmasi'
                 })
                 
@@ -123,35 +112,13 @@ if menu == "📖 Profil Desa":
     """)
 
     st.markdown("### 🗺️ Peta Wilayah")
-    
-    # Koordinat yang sudah digeser manual agar tepat di atas teks OpenStreetMap
     sarwodadi_coords = [-7.24700, 109.77150]
     giritirta_coords = [-7.24350, 109.78450]
-    
-    # Titik tengah kamera
-    center_coords = [
-        (sarwodadi_coords[0] + giritirta_coords[0]) / 2,
-        (sarwodadi_coords[1] + giritirta_coords[1]) / 2
-    ]
+    center_coords = [(sarwodadi_coords[0] + giritirta_coords[0]) / 2, (sarwodadi_coords[1] + giritirta_coords[1]) / 2]
     
     m = folium.Map(location=center_coords, zoom_start=15)
-    
-    # Pin Desa Sarwodadi
-    folium.Marker(
-        location=sarwodadi_coords, 
-        popup="Desa Sarwodadi", 
-        tooltip="Desa Sarwodadi", 
-        icon=folium.Icon(color="green", icon="leaf")
-    ).add_to(m)
-    
-    # Pin Desa Giritirta
-    folium.Marker(
-        location=giritirta_coords, 
-        popup="Desa Giritirta", 
-        tooltip="Desa Giritirta", 
-        icon=folium.Icon(color="darkgreen", icon="leaf")
-    ).add_to(m)
-    
+    folium.Marker(location=sarwodadi_coords, popup="Desa Sarwodadi", tooltip="Desa Sarwodadi", icon=folium.Icon(color="green", icon="leaf")).add_to(m)
+    folium.Marker(location=giritirta_coords, popup="Desa Giritirta", tooltip="Desa Giritirta", icon=folium.Icon(color="darkgreen", icon="leaf")).add_to(m)
     st_folium(m, width=700, height=400)
 
 # ================= HALAMAN 2: DASHBOARD =================
@@ -163,13 +130,13 @@ elif menu == "📊 Dashboard Data Pertanian":
     if not data_peternak.empty:
         filter_mode = st.sidebar.radio("Filter berdasarkan:", ["RW", "RT"])
 
-        # Memastikan opsi filter '-' (data kosong) tidak perlu dipilih secara default
+        # Perbaikan: tanda '-' sekarang disertakan dalam pilihan agar ke-33 ternak tidak hilang
         if filter_mode == "RW":
-            pilihan_unik = sorted([x for x in data_peternak["RW"].unique() if x != "-"])
+            pilihan_unik = sorted(data_peternak["RW"].unique())
             selected_lokasi = st.sidebar.multiselect("Pilih RW", options=pilihan_unik, default=pilihan_unik)
             filtered_data = data_peternak[data_peternak["RW"].isin(selected_lokasi)]
         else:
-            pilihan_unik = sorted([x for x in data_peternak["RT"].unique() if x != "-"])
+            pilihan_unik = sorted(data_peternak["RT"].unique())
             selected_lokasi = st.sidebar.multiselect("Pilih RT", options=pilihan_unik, default=pilihan_unik)
             filtered_data = data_peternak[data_peternak["RT"].isin(selected_lokasi)]
 
@@ -187,7 +154,12 @@ elif menu == "📊 Dashboard Data Pertanian":
         st.write("---")
 
         st.subheader("📄 Data Peternak")
-        tabel_tampil = filtered_data[['Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Jantan', 'Betina', 'Anakan', 'Total Ekor', 'Ketersediaan']]
+        # Menambahkan 'No' ke dalam tabel yang akan ditampilkan
+        tabel_tampil = filtered_data[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Jantan', 'Betina', 'Anakan', 'Total Ekor', 'Ketersediaan']].copy()
+        
+        # Perbaikan: Menjadikan kolom 'No' sebagai indeks utama agar angka 0 di pinggir hilang
+        tabel_tampil.set_index('No', inplace=True)
+        
         st.dataframe(tabel_tampil, use_container_width=True)
         st.write("---")
 
