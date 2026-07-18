@@ -96,16 +96,16 @@ if menu == "📖 Profil Desa":
     st.markdown("## 📖 Profil Desa Sarwodadi & Giritirta")
     st.write("---")
     st.markdown("""
-    **Desa Sarwodadi dan Desa Giritirta** adalah dua wilayah yang bertetangga dan saling bersinergi di utara Kabupaten Banjarnegara. 
+    Desa Sarwodadi dan Desa Giritirta adalah dua wilayah yang bertetangga dan saling bersinergi di utara Kabupaten Banjarnegara. 
     Dikelilingi oleh keasrian alam khas pegunungan, kedua desa ini memiliki lingkungan yang sangat mendukung kemajuan sektor agraris.
     
     ### 👥 Potensi Peternakan Warga
     Warga di Desa Sarwodadi dan Giritirta sangat proaktif dalam memanfaatkan potensi alamnya, salah satunya melalui sektor peternakan yang menjadi pundi-pundi ekonomi keluarga.
     
     Berdasarkan hasil pendataan wilayah terkini, hewan ternak yang menjadi komoditas utama warga di kedua desa ini meliputi:
-    * **Kambing**
-    * **Domba**
-    * **Sapi**
+    * Kambing
+    * Domba
+    * Sapi
     """)
 
     st.markdown("### 🗺️ Peta Wilayah")
@@ -150,7 +150,8 @@ elif menu == "📊 Dashboard Data Peternakan":
         st.write("---")
 
         st.subheader("📄 Data Peternak")
-        tabel_tampil = filtered_data[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Jantan', 'Betina', 'Anakan', 'Total Ekor', 'Ketersediaan']].copy()
+        # Menghapus kolom 'Ketersediaan' dari tabel yang ditampilkan di sini
+        tabel_tampil = filtered_data[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Jantan', 'Betina', 'Anakan', 'Total Ekor']].copy()
         tabel_tampil.set_index('No', inplace=True)
         st.dataframe(tabel_tampil, use_container_width=True)
         st.write("---")
@@ -178,7 +179,6 @@ elif menu == "💉 Rencana Vitamin & Vaksin":
     st.markdown("Halaman ini dirancang khusus untuk mendukung program pemberian vaksin dan vitamin pada ternak warga. Data logistik di bawah ini dihitung otomatis **hanya untuk peternak yang berstatus 'Bersedia'**.")
     st.write("---")
     
-    # Membagi layout menjadi 2 kolom untuk grafik agar lebih rapi
     col_chart1, col_chart2 = st.columns(2)
     
     with col_chart1:
@@ -186,7 +186,6 @@ elif menu == "💉 Rencana Vitamin & Vaksin":
         data_pemilik_unik = data_peternak.groupby('No').first().reset_index()
         keberhasilan_df = data_pemilik_unik.groupby('Ketersediaan').size().reset_index(name='Jumlah Orang')
         
-        # Mengubah Pie Chart menjadi Donut Chart (hole=0.4) agar lebih elegan
         fig_ketersediaan = px.pie(
             keberhasilan_df, names="Ketersediaan", values="Jumlah Orang",
             color_discrete_sequence=['#8D6E63', '#D7CCC8', '#5D4037'], hole=0.4
@@ -194,13 +193,11 @@ elif menu == "💉 Rencana Vitamin & Vaksin":
         fig_ketersediaan.update_layout(margin=dict(t=20, b=20, l=0, r=0))
         st.plotly_chart(fig_ketersediaan, use_container_width=True)
 
-    # Menarik data khusus target vaksin (Bersedia)
     target_vaksin_df = data_peternak[data_peternak['Ketersediaan'] == 'Bersedia'].copy()
     
     with col_chart2:
         st.subheader("📍 Beban Kerja per RT")
         if not target_vaksin_df.empty:
-            # Menghitung berapa rumah yang harus dikunjungi di tiap RT
             beban_rt = target_vaksin_df.groupby("RT")['No'].nunique().reset_index(name='Kunjungan Rumah')
             fig_beban = px.bar(
                 beban_rt, x="RT", y="Kunjungan Rumah", text_auto=True,
@@ -216,21 +213,17 @@ elif menu == "💉 Rencana Vitamin & Vaksin":
     st.subheader("📦 Kalkulator Kebutuhan Belanja Logistik")
     
     if not target_vaksin_df.empty:
-        # Menghitung populasi target spesifik berdasarkan jenis hewan
         kambing_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Kambing']['Total Ekor'].sum()
         domba_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Domba']['Total Ekor'].sum()
         sapi_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Sapi']['Total Ekor'].sum()
         
-        # Asumsi Dosis Vitamin / Vaksin
-        dosis_kambing_domba = 2 # ml per ekor
-        dosis_sapi = 5          # ml per ekor
+        dosis_kambing_domba = 2 
+        dosis_sapi = 5          
         total_vitamin_ml = ((kambing_target + domba_target) * dosis_kambing_domba) + (sapi_target * dosis_sapi)
         
-        # Kalkulasi Estimasi Botol (Asumsi 1 botol = 100 ml)
         asumsi_ukuran_botol = 100
         botol_dibutuhkan = (total_vitamin_ml // asumsi_ukuran_botol) + (1 if total_vitamin_ml % asumsi_ukuran_botol > 0 else 0)
         
-        # Tampilan 4 Kolom Metrik Belanja
         v_col1, v_col2, v_col3, v_col4 = st.columns(4)
         v_col1.metric("Total Kunjungan", f"{target_vaksin_df['No'].nunique()} Rumah")
         v_col2.metric("Total Sasaran Hewan", f"{int(target_vaksin_df['Total Ekor'].sum())} Ekor")
@@ -240,18 +233,15 @@ elif menu == "💉 Rencana Vitamin & Vaksin":
         st.write("---")
         
         st.subheader("📋 Lembar Kerja Lapangan (Cetak Checklist)")
-        st.markdown("Tabel ini adalah daftar sasaran akhir. Kolom **Status Vaksin** dan **Catatan Medis** sengaja dikosongkan agar mempermudah tim lapangan melakukan *checklist* (centang) menggunakan pulpen saat di lokasi.")
+        st.markdown("Tabel ini adalah daftar sasaran akhir. Kolom Status Vaksin dan Catatan Medis sengaja dikosongkan agar mempermudah tim lapangan melakukan *checklist* (centang) menggunakan pulpen saat di lokasi.")
         
-        # Modifikasi tabel khusus untuk di-print (menambahkan kolom checklist kosong)
         tabel_target = target_vaksin_df[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Total Ekor']].copy()
         
-        # Membuat kolom tiruan untuk checklist cetak
         tabel_target['[ ] Status Vaksin'] = "[   ]"
         tabel_target['Catatan Medis Lapangan'] = ""
         
         tabel_target.set_index('No', inplace=True)
         
-        # Tombol Download CSV
         csv_data = tabel_target.to_csv().encode('utf-8')
         st.download_button(
             label="📥 Unduh Lembar Kerja (Format CSV)",
