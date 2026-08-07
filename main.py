@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
 from streamlit_option_menu import option_menu
@@ -37,10 +36,11 @@ def load_data_populasi():
         'Ketersediaan'
     ]
     
+    # PERBAIKAN: Mengatasi Missing Data agar tampil "Belum Terdata"
     def format_wilayah(val, prefix):
-        if pd.isna(val): return "-"
+        if pd.isna(val): return f"{prefix} Belum Terdata"
         s = str(val).replace('.0', '').strip()
-        if s.lower() in ['nan', '-', '', 'none', '0-']: return "-"
+        if s.lower() in ['nan', '-', '', 'none', '0-']: return f"{prefix} Belum Terdata"
         if s.isdigit() and len(s) == 1: return f"{prefix} 0{s}"
         return f"{prefix} {s.upper()}"
     
@@ -48,6 +48,7 @@ def load_data_populasi():
     for _, row in df.iterrows():
         if pd.isna(row['Nama Pemilik']): continue
         
+        # 🛡️ PROTEKSI DATA SENSITIF (DATA MASKING)
         nomor_urut = int(row['No']) if pd.notna(row['No']) else 0
         nama_disensor = f"Peternak {nomor_urut}"
         
@@ -164,13 +165,19 @@ elif menu == "📊 Statistik & Populasi":
     st.write("Pantau sebaran dan kekayaan peternakan desa kita dengan mudah melalui grafik di bawah ini.")
     
     if not data_peternak.empty:
+        # ---- HACK MISSING DATA & FILTER ----
+        # Hanya tampilkan data yang total ekornya lebih dari 0 agar grafik tidak error
+        df_visual = data_peternak[data_peternak['Total Ekor'] > 0].copy()
+        df_visual['RW'] = df_visual['RW'].replace("", "RW Belum Terdata")
+        df_visual['RT'] = df_visual['RT'].replace("", "RT Belum Terdata")
+
         # ---- BAGIAN ATAS: KARTU METRIK UTAMA ----
         st.markdown("### 🏆 Ringkasan Kekayaan Ternak")
         col1, col2, col3, col4 = st.columns(4)
-        total_ekor = int(data_peternak['Total Ekor'].sum())
-        total_peternak = data_peternak['No'].nunique()
-        ternak_favorit = data_peternak.groupby('Jenis Ternak')['Total Ekor'].sum().idxmax()
-        rt_terbanyak = data_peternak.groupby('RT')['Total Ekor'].sum().idxmax()
+        total_ekor = int(df_visual['Total Ekor'].sum())
+        total_peternak = df_visual['No'].nunique()
+        ternak_favorit = df_visual.groupby('Jenis Ternak')['Total Ekor'].sum().idxmax()
+        rt_terbanyak = df_visual.groupby('RT')['Total Ekor'].sum().idxmax()
 
         col1.info(f"**🐄 Total Populasi**\n## {total_ekor} Ekor")
         col2.success(f"**👨‍🌾 Total Peternak**\n## {total_peternak} Warga")
@@ -185,7 +192,7 @@ elif menu == "📊 Statistik & Populasi":
         with c1:
             # DONUT CHART: Komposisi Hewan
             st.markdown("#### 🍩 Komposisi Jenis Ternak")
-            df_jenis = data_peternak.groupby('Jenis Ternak')['Total Ekor'].sum().reset_index()
+            df_jenis = df_visual.groupby('Jenis Ternak')['Total Ekor'].sum().reset_index()
             fig_pie = px.pie(df_jenis, values='Total Ekor', names='Jenis Ternak', hole=0.5,
                              color='Jenis Ternak', color_discrete_map=TERN_COLORS)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
@@ -195,14 +202,15 @@ elif menu == "📊 Statistik & Populasi":
         with c2:
             # TREEMAP: Sebaran per Wilayah
             st.markdown("#### 🗺️ Peta Kepadatan Wilayah (RW & RT)")
-            fig_tree = px.treemap(data_peternak, path=['RW', 'RT', 'Jenis Ternak'], values='Total Ekor',
-                                  color='Total Ekor', color_continuous_scale='copper')
+            # Menggunakan YlOrBr agar tidak error di Plotly Express
+            fig_tree = px.treemap(df_visual, path=['RW', 'RT', 'Jenis Ternak'], values='Total Ekor',
+                                  color='Total Ekor', color_continuous_scale='YlOrBr')
             fig_tree.update_layout(margin=dict(t=0, b=0, l=0, r=0))
             st.plotly_chart(fig_tree, use_container_width=True)
 
         # BAR CHART: Jantan vs Betina vs Anakan
         st.markdown("#### 📊 Demografi Kelompok Umur & Kelamin")
-        df_demografi = data_peternak.groupby('Jenis Ternak')[['Jantan', 'Betina', 'Anakan']].sum().reset_index()
+        df_demografi = df_visual.groupby('Jenis Ternak')[['Jantan', 'Betina', 'Anakan']].sum().reset_index()
         df_demografi_melt = df_demografi.melt(id_vars='Jenis Ternak', var_name='Kategori', value_name='Jumlah')
         fig_bar = px.bar(df_demografi_melt, x='Jenis Ternak', y='Jumlah', color='Kategori',
                          barmode='group', color_discrete_sequence=['#5D4037', '#A1887F', '#D7CCC8'])
@@ -217,7 +225,7 @@ elif menu == "📊 Statistik & Populasi":
         st.warning("Data Populasi kosong.")
 
 # =========================================================
-# HALAMAN 3: RENCANA VAKSIN (VISUALISASI KALKULATOR)
+# HALAMAN 3: RENCANA VAKSIN
 # =========================================================
 elif menu == "💉 Kalkulator Vaksin":
     st.markdown("<h1 style='color: #4E342E;'>💉 Prediksi & Kebutuhan Logistik Vaksinasi</h1>", unsafe_allow_html=True)
@@ -237,7 +245,6 @@ elif menu == "💉 Kalkulator Vaksin":
         total_vitamin_ml = dosis_k + dosis_d + dosis_s
         botol = int((total_vitamin_ml // 100) + (1 if total_vitamin_ml % 100 > 0 else 0))
 
-        # VISUALISASI PIPELINE / FUNNEL
         colA, colB = st.columns([1, 2])
         with colA:
             st.markdown("### 📦 Total Belanja")
@@ -256,7 +263,6 @@ elif menu == "💉 Kalkulator Vaksin":
             st.plotly_chart(fig_dosis, use_container_width=True)
 
         st.write("---")
-        # TABEL TARGET LAPANGAN UNTUK DI PRINT PETUGAS
         st.subheader("📋 Lembar Kerja Lapangan Pemasangan Vaksin")
         st.info("Tabel ini dirancang agar mudah dibaca oleh mantri/dokter hewan saat di lapangan.")
         tabel_target = target_vaksin_df[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Total Ekor']].copy()
@@ -266,7 +272,7 @@ elif menu == "💉 Kalkulator Vaksin":
         st.warning("Belum ada warga yang terdata dengan status 'Bersedia'.")
 
 # =========================================================
-# HALAMAN 4: REKAM MEDIS (VISUALISASI KESEHATAN)
+# HALAMAN 4: REKAM MEDIS
 # =========================================================
 elif menu == "🩺 Pantauan Kesehatan":
     st.markdown("<h1 style='color: #4E342E;'>🩺 Radar Kesehatan Hewan Ternak</h1>", unsafe_allow_html=True)
@@ -309,4 +315,12 @@ elif menu == "🩺 Pantauan Kesehatan":
     st.markdown("*(Nama warga disamarkan oleh sistem untuk melindungi privasi)*")
     
     kolom_aman = [col for col in data_medis.columns if col not in ['No', 'ID/Nama Ternak', 'No. Telepon', 'Nama Dokter Hewan / Paramedik']]
-    st.dataframe(data_medis[kolom_aman], use_container_width=True)
+    df_tampil = data_medis[kolom_aman].copy()
+    
+    # PERBAIKAN: Merapikan nilai '-' yang kosong menjadi teks yang lebih informatif
+    if 'Terapi / Pengobatan' in df_tampil.columns:
+        df_tampil['Terapi / Pengobatan'] = df_tampil['Terapi / Pengobatan'].replace('-', 'Belum Diberikan Tindakan')
+    if 'Diagnosa' in df_tampil.columns:
+        df_tampil['Diagnosa'] = df_tampil['Diagnosa'].replace('-', 'Menunggu Hasil')
+        
+    st.dataframe(df_tampil, use_container_width=True)
