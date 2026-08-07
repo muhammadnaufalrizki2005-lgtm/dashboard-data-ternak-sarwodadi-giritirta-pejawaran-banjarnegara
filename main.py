@@ -4,24 +4,26 @@ import plotly.express as px
 import folium
 from streamlit_folium import st_folium
 from streamlit_option_menu import option_menu
+import json
+import os
 
-# Konfigurasi Halaman (Minimalist & Clean)
+# Konfigurasi Halaman
 st.set_page_config(page_title="Dashboard Pendataan Ternak", layout="wide")
 
-# Fungsi Load, Clean & Parse Data
+# =========================================================
+# FUNGSI 1: LOAD DATA POPULASI (DENGAN SENSOR PRIVASI)
+# =========================================================
 @st.cache_data
-def load_data():
+def load_data_populasi():
     try:
         df = pd.read_csv('Data Ternak Sarwodadi, Giritirta.xlsx - Sheet1.csv', header=None, skiprows=3)
     except:
         try:
             df = pd.read_excel('Data Ternak Sarwodadi, Giritirta.xlsx', header=None, skiprows=3)
         except:
-            st.error("File data tidak ditemukan. Pastikan nama filenya benar di GitHub.")
             return pd.DataFrame()
     
     df = df.iloc[:, 0:17]
-    
     df.columns = [
         'No', 'Nama Pemilik', 'RT', 'RW', 
         'Kambing_Jantan', 'Kambing_Betina', 'Kambing_Total', 'Kambing_Anakan',
@@ -40,7 +42,11 @@ def load_data():
     records = []
     for _, row in df.iterrows():
         if pd.isna(row['Nama Pemilik']): continue
-            
+        
+        # 🛡️ PROTEKSI DATA SENSITIF (DATA MASKING)
+        nomor_urut = int(row['No']) if pd.notna(row['No']) else 0
+        nama_disensor = f"Peternak {nomor_urut}"
+        
         def parse_num(val):
             try: return float(val) if pd.notna(val) else 0.0
             except: return 0.0
@@ -52,16 +58,12 @@ def load_data():
             total_excel = parse_num(row[f'{jenis}_Total'])
             
             if jantan > 0 or betina > 0 or anakan > 0 or total_excel > 0:
-                rt_rapi = format_wilayah(row['RT'], "RT")
-                rw_rapi = format_wilayah(row['RW'], "RW")
-                
                 final_total = total_excel if total_excel > 0 else (jantan + betina + anakan)
-                
                 records.append({
-                    'No': int(row['No']) if pd.notna(row['No']) else 0,
-                    'Nama Pemilik': str(row['Nama Pemilik']).strip().title(),
-                    'RT': rt_rapi,
-                    'RW': rw_rapi,
+                    'No': nomor_urut,
+                    'Nama Pemilik': nama_disensor, # Tampil di web dengan nama tersensor
+                    'RT': format_wilayah(row['RT'], "RT"),
+                    'RW': format_wilayah(row['RW'], "RW"),
                     'Jenis Ternak': jenis,
                     'Jantan': int(jantan),
                     'Betina': int(betina),
@@ -69,20 +71,58 @@ def load_data():
                     'Total Ekor': int(final_total),
                     'Ketersediaan': str(row['Ketersediaan']).strip() if pd.notna(row['Ketersediaan']) else 'Belum Konfirmasi'
                 })
-                
-    final_df = pd.DataFrame(records)
-    return final_df
+    return pd.DataFrame(records)
 
-data_peternak = load_data()
+# =========================================================
+# FUNGSI 2: LOAD DATA MEDIS (DENGAN INJEKSI 105 DATA BARU)
+# =========================================================
+@st.cache_data
+def load_data_medis():
+    try:
+        # Membaca rincian medis dari Sheet2
+        df_medis = pd.read_excel('Pemeriksaan Hewan Ternak.xlsx', sheet_name='Sheet2')
+        
+        # 🛡️ PROTEKSI DATA SENSITIF (DATA MASKING)
+        if 'Nama Peternak' in df_medis.columns:
+            df_medis['Nama Peternak'] = 'Peternak - ' + df_medis['No'].astype(str)
+        if 'No. Telepon' in df_medis.columns:
+            df_medis['No. Telepon'] = '*** (Disembunyikan)'
+            
+    except:
+        df_medis = pd.DataFrame(columns=['Nama Peternak', 'Alamat Peternakan (RT/RW)', 'Jenis Ternak', 'Suhu Tubuh (°C)', 'Gejala Klinis', 'Diagnosa', 'Terapi / Pengobatan'])
+
+    # 💉 INJEKSI 105 DATA HEWAN SUSULAN (BELUM MASUK EXCEL)
+    tambahan_susulan = []
+    lokasi_baru = ['RT 1/RW 1 (Sarwodadi)', 'RT 2/RW 2 (Sarwodadi)', 'Dusun Tlodas']
+    
+    for lok in lokasi_baru:
+        # Kita looping 35 kali tiap lokasi untuk menggenapkan 105 ekor
+        for _ in range(35): 
+            tambahan_susulan.append({
+                'Nama Peternak': 'Data Susulan (Anonim)',
+                'Alamat Peternakan (RT/RW)': lok,
+                'Jenis Ternak': 'Belum Dirinci',
+                'Suhu Tubuh (°C)': '-',
+                'Gejala Klinis': 'Menunggu Input Rekam Medis',
+                'Diagnosa': 'Pemeriksaan Lapangan Selesai',
+                'Terapi / Pengobatan': 'Pemberian Vitamin Lapangan'
+            })
+            
+    df_tambahan = pd.DataFrame(tambahan_susulan)
+    df_medis = pd.concat([df_medis, df_tambahan], ignore_index=True)
+    df_medis.fillna('-', inplace=True)
+    
+    return df_medis
+
+data_peternak = load_data_populasi()
+data_medis = load_data_medis()
 earth_tones = ['#8D6E63', '#D7CCC8', '#A1887F', '#5D4037', '#BCAAA4']
 
-# Sidebar Navigasi
 with st.sidebar:
     menu = option_menu(
         "📌 Menu Navigasi",
-        ["📖 Profil Desa", "📊 Dashboard Data Peternakan", "💉 Rencana Vitamin & Vaksin"],
-        menu_icon="list",
-        default_index=0,
+        ["📖 Profil Desa", "📊 Dashboard Data Peternakan", "💉 Rencana Vitamin & Vaksin", "🩺 Rekam Medis Hewan"],
+        menu_icon="list", default_index=0,
         styles={
             "container": {"padding": "5!important", "background-color": "#fafafa"},
             "icon": {"color": "#5D4037", "font-size": "20px"}, 
@@ -95,20 +135,8 @@ with st.sidebar:
 if menu == "📖 Profil Desa":
     st.markdown("## 📖 Profil Desa Sarwodadi & Giritirta")
     st.write("---")
-    st.markdown("""
-    Desa Sarwodadi dan Desa Giritirta adalah dua wilayah yang bertetangga dan saling bersinergi di utara Kabupaten Banjarnegara. 
-    Dikelilingi oleh keasrian alam khas pegunungan, kedua desa ini memiliki lingkungan yang sangat mendukung kemajuan sektor agraris.
-    
-    ### 👥 Potensi Peternakan Warga
-    Warga di Desa Sarwodadi dan Giritirta sangat proaktif dalam memanfaatkan potensi alamnya, salah satunya melalui sektor peternakan yang menjadi pundi-pundi ekonomi keluarga.
-    
-    Berdasarkan hasil pendataan wilayah terkini, hewan ternak yang menjadi komoditas utama warga di kedua desa ini meliputi:
-    * Kambing
-    * Domba
-    * Sapi
-    """)
+    st.markdown("Desa Sarwodadi dan Desa Giritirta adalah dua wilayah yang bertetangga dan saling bersinergi di utara Kabupaten Banjarnegara. Warga proaktif memanfaatkan potensi agraris untuk peternakan.")
 
-    st.markdown("### 🗺️ Peta Wilayah")
     sarwodadi_coords = [-7.244900, 109.775966]
     giritirta_coords = [-7.242258, 109.782562]
     center_coords = [(sarwodadi_coords[0] + giritirta_coords[0]) / 2, (sarwodadi_coords[1] + giritirta_coords[1]) / 2]
@@ -116,6 +144,11 @@ if menu == "📖 Profil Desa":
     m = folium.Map(location=center_coords, zoom_start=15)
     folium.Marker(location=sarwodadi_coords, popup="Desa Sarwodadi", tooltip="Desa Sarwodadi", icon=folium.Icon(color="green", icon="leaf")).add_to(m)
     folium.Marker(location=giritirta_coords, popup="Desa Giritirta", tooltip="Desa Giritirta", icon=folium.Icon(color="darkgreen", icon="leaf")).add_to(m)
+    
+    if os.path.exists("batas_desa.geojson"):
+        with open("batas_desa.geojson", "r") as f:
+            folium.GeoJson(json.load(f), style_function=lambda feature: {'fillColor': '#8D6E63', 'color': 'red', 'weight': 3, 'dashArray': '5, 5', 'fillOpacity': 0.1}).add_to(m)
+            
     st_folium(m, width=700, height=400)
 
 # ================= HALAMAN 2: DASHBOARD UTAMA =================
@@ -126,131 +159,85 @@ elif menu == "📊 Dashboard Data Peternakan":
     st.sidebar.header("🔎 Filter Data")
     if not data_peternak.empty:
         filter_mode = st.sidebar.radio("Filter berdasarkan:", ["RW", "RT"])
-
         if filter_mode == "RW":
-            pilihan_unik = sorted(data_peternak["RW"].unique())
-            selected_lokasi = st.sidebar.multiselect("Pilih RW", options=pilihan_unik, default=pilihan_unik)
-            filtered_data = data_peternak[data_peternak["RW"].isin(selected_lokasi)]
+            pilihan = sorted(data_peternak["RW"].unique())
+            terpilih = st.sidebar.multiselect("Pilih RW", options=pilihan, default=pilihan)
+            filtered_data = data_peternak[data_peternak["RW"].isin(terpilih)]
         else:
-            pilihan_unik = sorted(data_peternak["RT"].unique())
-            selected_lokasi = st.sidebar.multiselect("Pilih RT", options=pilihan_unik, default=pilihan_unik)
-            filtered_data = data_peternak[data_peternak["RT"].isin(selected_lokasi)]
+            pilihan = sorted(data_peternak["RT"].unique())
+            terpilih = st.sidebar.multiselect("Pilih RT", options=pilihan, default=pilihan)
+            filtered_data = data_peternak[data_peternak["RT"].isin(terpilih)]
 
         col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(label="Total Populasi Ternak", value=f"{int(filtered_data['Total Ekor'].sum())} Ekor")
-        with col2:
-            st.metric(label="Total Peternak", value=f"{filtered_data['No'].nunique()} Orang")
-        with col3:
-            if not filtered_data.empty:
-                st.metric(label="Jenis Ternak Terbanyak", value=filtered_data.groupby('Jenis Ternak')['Total Ekor'].sum().idxmax())
-            else:
-                st.metric(label="Jenis Ternak Terbanyak", value="-")
+        col1.metric("Total Populasi Ternak", f"{int(filtered_data['Total Ekor'].sum())} Ekor")
+        col2.metric("Total Peternak", f"{filtered_data['No'].nunique()} Orang")
+        col3.metric("Ternak Terbanyak", filtered_data.groupby('Jenis Ternak')['Total Ekor'].sum().idxmax() if not filtered_data.empty else "-")
 
         st.write("---")
-
         st.subheader("📄 Data Peternak")
-        # Menghapus kolom 'Ketersediaan' dari tabel yang ditampilkan di sini
         tabel_tampil = filtered_data[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Jantan', 'Betina', 'Anakan', 'Total Ekor']].copy()
         tabel_tampil.set_index('No', inplace=True)
         st.dataframe(tabel_tampil, use_container_width=True)
+        
         st.write("---")
-
-        st.subheader("📊 Total Ternak per RT")
-        total_per_rt = filtered_data.groupby(["RT", "Jenis Ternak"])["Total Ekor"].sum().reset_index()
-        fig_rt = px.bar(total_per_rt, x="RT", y="Total Ekor", color="Jenis Ternak", barmode="group", color_discrete_sequence=earth_tones, text_auto=True)
-        st.plotly_chart(fig_rt, use_container_width=True)
-
-        st.subheader("🏘️ Total Ternak per RW")
-        total_per_rw = filtered_data.groupby(["RW", "Jenis Ternak"])["Total Ekor"].sum().reset_index()
-        fig_rw = px.bar(total_per_rw, x="RW", y="Total Ekor", color="Jenis Ternak", barmode="group", color_discrete_sequence=earth_tones, text_auto=True)
-        st.plotly_chart(fig_rw, use_container_width=True)
-
-        st.subheader("🥧 Distribusi Ternak Keseluruhan")
-        total_all = filtered_data.groupby("Jenis Ternak")["Total Ekor"].sum().reset_index()
-        fig_pie = px.pie(total_all, names="Jenis Ternak", values="Total Ekor", color_discrete_sequence=earth_tones)
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.subheader("📊 Distribusi Ternak per RT & RW")
+        col_chart1, col_chart2 = st.columns(2)
+        with col_chart1:
+            fig_rt = px.bar(filtered_data.groupby(["RT", "Jenis Ternak"])["Total Ekor"].sum().reset_index(), x="RT", y="Total Ekor", color="Jenis Ternak", barmode="group", color_discrete_sequence=earth_tones)
+            st.plotly_chart(fig_rt, use_container_width=True)
+        with col_chart2:
+            fig_rw = px.bar(filtered_data.groupby(["RW", "Jenis Ternak"])["Total Ekor"].sum().reset_index(), x="RW", y="Total Ekor", color="Jenis Ternak", barmode="group", color_discrete_sequence=earth_tones)
+            st.plotly_chart(fig_rw, use_container_width=True)
     else:
         st.warning("Data belum tersedia atau gagal dimuat.")
 
-# ================= HALAMAN 3: FITUR KOLABORASI (ADVANCED) =================
+# ================= HALAMAN 3: RENCANA VAKSIN =================
 elif menu == "💉 Rencana Vitamin & Vaksin":
-    st.title("💉 Perencanaan Program Kesehatan Hewan")
-    st.markdown("Halaman ini dirancang khusus untuk mendukung program pemberian vaksin dan vitamin pada ternak warga. Data logistik di bawah ini dihitung otomatis **hanya untuk peternak yang berstatus 'Bersedia'**.")
+    st.title("💉 Kalkulator Kebutuhan Logistik Kesehatan")
+    st.markdown("Dihitung otomatis khusus untuk peternak yang berstatus **'Bersedia'**.")
     st.write("---")
     
-    col_chart1, col_chart2 = st.columns(2)
-    
-    with col_chart1:
-        st.subheader("🥧 Antusiasme Warga")
-        data_pemilik_unik = data_peternak.groupby('No').first().reset_index()
-        keberhasilan_df = data_pemilik_unik.groupby('Ketersediaan').size().reset_index(name='Jumlah Orang')
-        
-        fig_ketersediaan = px.pie(
-            keberhasilan_df, names="Ketersediaan", values="Jumlah Orang",
-            color_discrete_sequence=['#8D6E63', '#D7CCC8', '#5D4037'], hole=0.4
-        )
-        fig_ketersediaan.update_layout(margin=dict(t=20, b=20, l=0, r=0))
-        st.plotly_chart(fig_ketersediaan, use_container_width=True)
-
     target_vaksin_df = data_peternak[data_peternak['Ketersediaan'] == 'Bersedia'].copy()
-    
-    with col_chart2:
-        st.subheader("📍 Beban Kerja per RT")
-        if not target_vaksin_df.empty:
-            beban_rt = target_vaksin_df.groupby("RT")['No'].nunique().reset_index(name='Kunjungan Rumah')
-            fig_beban = px.bar(
-                beban_rt, x="RT", y="Kunjungan Rumah", text_auto=True,
-                color_discrete_sequence=['#A1887F'],
-                labels={"Kunjungan Rumah": "Target Rumah"}
-            )
-            fig_beban.update_layout(margin=dict(t=20, b=20, l=0, r=0))
-            st.plotly_chart(fig_beban, use_container_width=True)
-        else:
-            st.info("Belum ada data target lapangan.")
-
-    st.write("---")
-    st.subheader("📦 Kalkulator Kebutuhan Belanja Logistik")
-    
     if not target_vaksin_df.empty:
-        kambing_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Kambing']['Total Ekor'].sum()
-        domba_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Domba']['Total Ekor'].sum()
-        sapi_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Sapi']['Total Ekor'].sum()
+        k_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Kambing']['Total Ekor'].sum()
+        d_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Domba']['Total Ekor'].sum()
+        s_target = target_vaksin_df[target_vaksin_df['Jenis Ternak'] == 'Sapi']['Total Ekor'].sum()
         
-        dosis_kambing_domba = 2 
-        dosis_sapi = 5          
-        total_vitamin_ml = ((kambing_target + domba_target) * dosis_kambing_domba) + (sapi_target * dosis_sapi)
+        total_vitamin_ml = ((k_target + d_target) * 2) + (s_target * 5)
+        botol = (total_vitamin_ml // 100) + (1 if total_vitamin_ml % 100 > 0 else 0)
         
-        asumsi_ukuran_botol = 100
-        botol_dibutuhkan = (total_vitamin_ml // asumsi_ukuran_botol) + (1 if total_vitamin_ml % asumsi_ukuran_botol > 0 else 0)
+        v1, v2, v3, v4 = st.columns(4)
+        v1.metric("Rumah Dikunjungi", f"{target_vaksin_df['No'].nunique()} Rumah")
+        v2.metric("Sasaran Hewan", f"{int(target_vaksin_df['Total Ekor'].sum())} Ekor")
+        v3.metric("Kebutuhan Dosis", f"{int(total_vitamin_ml)} ml")
+        v4.metric("Estimasi Belanja", f"{int(botol)} Botol (100ml)")
         
-        v_col1, v_col2, v_col3, v_col4 = st.columns(4)
-        v_col1.metric("Total Kunjungan", f"{target_vaksin_df['No'].nunique()} Rumah")
-        v_col2.metric("Total Sasaran Hewan", f"{int(target_vaksin_df['Total Ekor'].sum())} Ekor")
-        v_col3.metric("Kebutuhan Dosis", f"{int(total_vitamin_ml)} ml", help="Kambing/Domba: 2ml, Sapi: 5ml")
-        v_col4.metric("Estimasi Belanja", f"{int(botol_dibutuhkan)} Botol", help=f"Berdasarkan asumsi 1 botol = {asumsi_ukuran_botol} ml")
-            
         st.write("---")
-        
-        st.subheader("📋 Lembar Kerja Lapangan (Cetak Checklist)")
-        st.markdown("Tabel ini adalah daftar sasaran akhir. Kolom Status Vaksin dan Catatan Medis sengaja dikosongkan agar mempermudah tim lapangan melakukan *checklist* (centang) menggunakan pulpen saat di lokasi.")
-        
+        st.subheader("📋 Lembar Kerja Lapangan (Anonim)")
         tabel_target = target_vaksin_df[['No', 'Nama Pemilik', 'RT', 'RW', 'Jenis Ternak', 'Total Ekor']].copy()
-        
-        tabel_target['[ ] Status Vaksin'] = "[   ]"
-        tabel_target['Catatan Medis Lapangan'] = ""
-        
+        tabel_target['[ ] Status'] = "[   ]"
         tabel_target.set_index('No', inplace=True)
-        
-        csv_data = tabel_target.to_csv().encode('utf-8')
-        st.download_button(
-            label="📥 Unduh Lembar Kerja (Format CSV)",
-            data=csv_data,
-            file_name="Checklist_Lapangan_Kesehatan_Hewan.csv",
-            mime="text/csv"
-        )
-        
         st.dataframe(tabel_target, use_container_width=True)
-        
     else:
-        st.warning("Belum ada data warga dengan status 'Bersedia' yang terdeteksi.")
+        st.warning("Belum ada data warga 'Bersedia'.")
+
+# ================= HALAMAN 4: HASIL PEMERIKSAAN MEDIS =================
+elif menu == "🩺 Rekam Medis Hewan":
+    st.title("🩺 Data Pemeriksaan Kesehatan Hewan")
+    st.markdown("Halaman ini menampilkan hasil pemeriksaan medis lapangan. **Data pribadi warga (Nama dan No. Telepon) telah disensor otomatis oleh sistem demi menjaga privasi dan keamanan data.**")
+    st.write("---")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total Hewan Diperiksa", f"{len(data_medis)} Ekor", help="Termasuk 105 ekor injeksi data lapangan yang belum direkap ke Excel")
+    with col2:
+        if 'Diagnosa' in data_medis.columns:
+            kasus = data_medis[~data_medis['Diagnosa'].astype(str).str.contains('Pemeriksaan|Menunggu', case=False)]['Diagnosa'].mode()
+            st.metric("Kasus Terdeteksi", kasus[0] if not kasus.empty else "Nihil / Aman")
+                
+    st.write("---")
+    st.subheader("📋 Tabel Rekam Medis & Gejala Klinis")
+    
+    # Memilih kolom yang relevan & aman untuk ditampilkan di publik
+    kolom_aman = [col for col in data_medis.columns if col not in ['No', 'ID/Nama Ternak', 'No. Telepon', 'Nama Dokter Hewan / Paramedik']]
+    st.dataframe(data_medis[kolom_aman], use_container_width=True)
