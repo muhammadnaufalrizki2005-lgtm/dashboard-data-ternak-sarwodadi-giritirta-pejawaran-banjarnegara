@@ -110,7 +110,10 @@ def load_data_medis():
             
     df_tambahan = pd.DataFrame(tambahan_susulan)
     df_medis = pd.concat([df_medis, df_tambahan], ignore_index=True)
-    df_medis.fillna('-', inplace=True)
+    
+    # PERBAIKAN: Mengubah tipe data menjadi object sebelum fillna 
+    # agar Pandas tidak error saat menimpa kolom angka dengan huruf '-'
+    df_medis = df_medis.astype(object).fillna('-')
     
     return df_medis
 
@@ -232,7 +235,7 @@ elif menu == "🩺 Rekam Medis Hewan":
         st.metric("Total Hewan Diperiksa", f"{len(data_medis)} Ekor", help="Termasuk 105 ekor injeksi data lapangan yang belum direkap ke Excel")
     with col2:
         if 'Diagnosa' in data_medis.columns:
-            # Penambahan na=False agar tidak error jika ada data kosong (NaN)
+            # Menggunakan na=False untuk mengatasi error jika ada data kosong pada kolom Diagnosa
             kasus = data_medis[~data_medis['Diagnosa'].astype(str).str.contains('Pemeriksaan|Menunggu', case=False, na=False)]['Diagnosa'].mode()
             st.metric("Kasus Terdeteksi", kasus[0] if not kasus.empty else "Nihil / Aman")
                 
