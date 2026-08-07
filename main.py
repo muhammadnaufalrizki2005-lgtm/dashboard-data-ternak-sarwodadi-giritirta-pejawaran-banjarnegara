@@ -17,10 +17,10 @@ st.set_page_config(page_title="Dashboard Pendataan Ternak", layout="wide")
 def load_data_populasi():
     try:
         df = pd.read_csv('Data Ternak Sarwodadi, Giritirta.xlsx - Sheet1.csv', header=None, skiprows=3)
-    except:
+    except Exception:
         try:
             df = pd.read_excel('Data Ternak Sarwodadi, Giritirta.xlsx', header=None, skiprows=3)
-        except:
+        except Exception:
             return pd.DataFrame()
     
     df = df.iloc[:, 0:17]
@@ -49,7 +49,7 @@ def load_data_populasi():
         
         def parse_num(val):
             try: return float(val) if pd.notna(val) else 0.0
-            except: return 0.0
+            except Exception: return 0.0
                 
         for jenis in ['Kambing', 'Domba', 'Sapi']:
             jantan = parse_num(row[f'{jenis}_Jantan'])
@@ -88,7 +88,7 @@ def load_data_medis():
         if 'No. Telepon' in df_medis.columns:
             df_medis['No. Telepon'] = '*** (Disembunyikan)'
             
-    except:
+    except Exception:
         df_medis = pd.DataFrame(columns=['Nama Peternak', 'Alamat Peternakan (RT/RW)', 'Jenis Ternak', 'Suhu Tubuh (°C)', 'Gejala Klinis', 'Diagnosa', 'Terapi / Pengobatan'])
 
     # 💉 INJEKSI 105 DATA HEWAN SUSULAN (BELUM MASUK EXCEL)
@@ -232,7 +232,8 @@ elif menu == "🩺 Rekam Medis Hewan":
         st.metric("Total Hewan Diperiksa", f"{len(data_medis)} Ekor", help="Termasuk 105 ekor injeksi data lapangan yang belum direkap ke Excel")
     with col2:
         if 'Diagnosa' in data_medis.columns:
-            kasus = data_medis[~data_medis['Diagnosa'].astype(str).str.contains('Pemeriksaan|Menunggu', case=False)]['Diagnosa'].mode()
+            # Penambahan na=False agar tidak error jika ada data kosong (NaN)
+            kasus = data_medis[~data_medis['Diagnosa'].astype(str).str.contains('Pemeriksaan|Menunggu', case=False, na=False)]['Diagnosa'].mode()
             st.metric("Kasus Terdeteksi", kasus[0] if not kasus.empty else "Nihil / Aman")
                 
     st.write("---")
